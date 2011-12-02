@@ -1,0 +1,154 @@
+
+= Intro =
+
+HasType provides a means of specifying type signatures
+(http://en.wikipedia.org/wiki/Type_signature) for Ruby methods.
+
+It's flexible enough to work well with the dynamic properties of
+Ruby, but helps provide some rigidity to "tighten up" the code.
+
+The type signatures can be checked for correctness at runtime, raising
+exceptions with helpful error messages for locating type mismatches.
+Since type checking incurs performance overhead, when performance
+matters, HasType can be "turned off".
+
+
+= Benefits =
+
+- Documentation -
+
+Knowing that the first argument is expected to be, say, either an
+Integer or nil doesn't tell you what that arguments *means*, but it's
+something.
+
+- Locating Problems -
+
+Write a type signature for a method, and then when you try running the
+code, if something's amiss (from a *type* standpoint), you can see
+exactly where it happened.
+
+Instead of a null pointer exception up at level A, you get a
+TypeMismatch exception three layers deeper, exactly where the nil was
+mistakenly returned from some method.  Again, it doesn't test the
+semantics of your code, but it's something.
+
+- Tracking Usage -
+
+HasType keeps track of where each method (actually) gets called from.
+So, after running your code for a while, you may then ask about any
+(type-signed) method where it got called from (if anywhere).
+
+It's not comprehensive, of course; if one potential call site itself
+never got called, you won't see that.  But again, it's something.
+
+
+= Design Goals =
+
+  + Type signature documentation.
+     - types of input arguments
+     - type of result
+
+  + Terse and expressive.
+     - Single-line.  Simple format.
+     
+  + Stays in sync.  (It's code that's validated.)
+     - However, checks are at RUN-time, not load-time.
+     - Method must be called in order for its signature to be checked.
+
+  + Facilities for code/signature maintenance:
+     - Records all callers of method, to see how it's used.
+       (Consequently, one can see which methods did not get called.)
+     - For called methods, record which types were *actually*
+       sent, to help "tighten up" too-permissive signatures.
+
+  + No performance penalty.
+     - Turn on (dev):   raises, flagging errors.
+     - Turn off (prod): does nothing.
+
+
+= Usage =
+
+  1. include HasType
+  2. Make declarations:
+     - 'sig' for methods
+     - 'type' for type synonyms
+
+= How it Works =
+
+  + Creates a "wrapper" method around original.
+  + Each time method is called:
+    - Checks input and result types.
+    - Raises exception if something is amiss.
+    - Gathers info:
+      + actual types of args and result
+      + the name/location of most-recent call spot
+
+
+= Example =
+
+  class Foo
+    include Glyde::HasType
+
+    ##
+    ##   Applies appropriate signatures to
+    ##   auto-generated reader/writer methods.
+    ##
+    attr_accessor :my_int do Integer end
+
+    ##
+    ##   #foo takes:
+    ##      1. an Integer
+    ##      2. a Bool (either true|false)   (but _not_ nil [to mean false])
+    ##      3. either a Symbol OR nil
+    ##   #foo returns: nothing meaningful (i.e. won't be checked)
+    ##
+    sig do Integer * Bool * (Symbol|nil) >> () end
+    def foo(a, b, c)
+      ...
+    end
+
+
+    ##
+    ##   Create re-usable type, namespaced locally.
+    ##
+    type :MyKey  do String|Symbol    end
+    type :MyVal  do Integer|String   end
+    type :MyHash do {MyKey => MyVal} end
+    ##
+    ##   Use those types
+    ##
+    sig do MyHash * MyKey * MyVal >> MyHash end
+    def bar(hash, k, v)
+      hash[k] = v
+      hash
+    end
+  end
+
+
+= NOTES: Using 'nil' =
+
+  + () == nil
+
+  + like Maybe:
+       sig do Integer|nil * String >> Foo end
+    First arg may be either an Integer or nil.
+    Second arg may be only a String.  If nil: TypeMismatch error.
+
+  + not the same as default
+       sig do String >> () end
+       def foo(str)  end
+    If arg is absent, that's an ArgmentError.
+    If arg's val is nil, that's a TypeMismatch error.
+
+       sig do String.opt >> () end
+       def foo(str='')  end
+    If arg isn't provided, that's ok; default will apply.
+    If arg IS provided, it must be a String.  (Not nil.)
+
+       sig do (String|nil).opt >> () end
+       def foo(str='')  end
+    Arg may be provided or not.
+    If provided, can be String or nil.
+
+  + N.B. Bool means only true|false.
+    If nil is acceptable (to mean 'false'), say so: Bool|nil.

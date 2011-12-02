@@ -1,0 +1,154 @@
+
+-Intro-
+
+MethodMaker (MM) provides a simple API for easily defining and
+undefining methods dynamically.
+
+Why do that?
+
+  [1] DSL.  Temporarily redefine an existing method.  Use the new
+  definition in your DSL.  Then revert it after you eval the DSL code.
+
+  [2] Method chaining.  Provide before- and after-hooks to be called
+  "around" any method.  (And revert that, as you like.)
+
+
+-Usage-
+
+Each instance of MM is for a particular method.  To get an instance of
+MM, use the factory method self.for_method:
+  
+  ##
+  ## For an instance method:
+  ##
+  mm = Glyde::MethodMaker.for_method(Foo, :bar)
+
+  ##
+  ## For a class method:
+  ##
+  mm = Glyde::MethodMaker.for_method(Foo, :'self.bar')  # or :'Foo.bar'
+
+(All functionality works for either type of method.)
+
+Then use the instance of MM to manipulate the method's definition, as
+in the examples below.
+
+Example 1: Define New Method
+
+  class Foo
+  end
+
+  ##
+  ## Observe: no definition for method Foo#quux.
+  ##
+  f = Foo.new
+  f.quux('baz')   # => NoMethodError: undefined method `quux' for #<Foo:0x1528dd08>
+
+  ##
+  ## Get a MethodMaker for this method.
+  ##
+  quux_mm = Glyde::MethodMaker.for_method(Foo, :quux)
+
+  ##
+  ## Provide a definition for the method.  Use it.
+  ##
+  quux_mm.create {|str| "Quux: #{str}" }
+  f.quux('baz')   # => "Quux: baz"
+
+  ##
+  ## Destroy its definition.  It's gone.
+  ##
+  quux_mm.destroy
+  f.quux('baz')   # => NoMethodError: undefined method `quux' for #<Foo:0x1528dd08>
+
+
+Example 2: Redefine Existing Method
+
+  class Foo
+    def bar(str)  "Original #bar: baz"  end
+  end
+
+  ##    
+  ## Use existing definition of #bar.
+  ##
+  f = Foo.new
+  f.bar('baz')    # => "Original #bar: baz"
+
+  ##
+  ## Get a MethodMaker instance for Foo#bar.
+  ##
+  bar_mm = Glyde::MethodMaker.for_method(Foo, :bar)
+
+  ##
+  ## Provide a new definition.
+  ## (The old one is not forgotten; it's merely aliased aside.)
+  ##
+  bar_mm.create {|str| "New #bar: #{str}" }
+  f.bar('baz')    # => "New #bar: baz"
+
+  ##
+  ## Destroy new definition, restoring the original.
+  ##
+  bar_mm.destroy
+  f.bar('baz')    # => "Original #bar: baz"
+
+
+Example 3: Wrap Existing Method with Callbacks
+
+  class Foo
+    def foo(str)  str  end
+  end
+
+  ##    
+  ## Use existing Foo#foo.
+  ##
+  f = Foo.new
+  f.foo('bar')    # => "bar"
+
+  ##
+  ## Get a MethodMaker instance for Foo#foo.
+  ##
+  foo_mm = Glyde::MethodMaker.for_method(Foo, :foo)
+
+  ##
+  ## Wrap pre-existing method with callbacks.
+  ## (If either is nil, that's ok.)
+  ##
+  before_proc = lambda do |*args|
+    puts "Before.  Arg:    #{args.inspect}"
+  end
+  after_proc = lambda do |result, *args|
+    puts "After.   Result: #{result.inspect}"
+  end
+  foo_mm.wrap(before_proc, after_proc)
+
+  ##
+  ## Notice that callbacks get called (and produce output).
+  ##
+  f.foo('bar')    # => "bar"
+  ##
+  ## stdout:  Before.  Args:   ["bar"]
+  ##          After.   Result: "bar"
+  ##
+  
+  ##
+  ## Unwrap method.
+  ## (#destroy may seem like the wrong name here.
+  ## Think of it as destroying the wrapper.)
+  ##
+  foo_mm.destroy
+
+  ##
+  ## Callbacks are gone.
+  ##
+  f.foo('bar')    # => "bar"
+  ##
+  ## stdout:  <nothing>
+  ##
+
+
+- Known Defects -    
+
+One may not dynamically add a method using MethodMaker and then wrap
+that method with callbacks.  One may wrap only those methods defined
+without the use of MethodMaker.

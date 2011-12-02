@@ -1,0 +1,10 @@
+
+ToDo:
+
+  - type variables (a, b, etc.)
+
+  - Documentation.  Hook into (i.e. produce) RDoc.
+    Or otherwise produce docs.
+
+  - Allow nil sig-proc, in which case no checks are done,
+    but type data is still recorded.
